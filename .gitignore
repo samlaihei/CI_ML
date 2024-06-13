@@ -152,4 +152,5 @@ cython_debug/
 #.idea/
 
 data/datasets/
-models/history/
+models/
+results/
