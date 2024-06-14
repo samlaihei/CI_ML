@@ -9,7 +9,7 @@ warnings.filterwarnings("ignore")
 class Closure_Invariants():
 
     def __init__(self, filename='ehtuv.npz', ehtim=False, ehtarray='EHT2017.txt', subarray=None,
-                 date='2017-04-05', ra=187.7059167, dec=12.3911222, bw_hz=230e9,
+                 date='2017-04-05', ra=187.7059167, dec=12.3911222, bw_hz=[230e9],
                  tint_sec=10, tadv_sec=48*60, tstart_hr=4.75, tstop_hr=6.5,
                  noise=False, sgrscat=False, ampcal=True, phasecal=True):
         
@@ -39,20 +39,26 @@ class Closure_Invariants():
             template.ra = self.ra
             template.dec = self.dec
             template.mjd = self.mjd
-            template.rf = self.bw_hz
             self.template = template.regrid_image(template.fovx(), 64, 'cubic')
-            self.obs = self.template.observe(self.ehtarray, self.tint_sec, self.tadv_sec, self.tstart_hr, self.tstop_hr, self.bw_hz, mjd = self.mjd, timetype='UTC', ttype='DFT', noise=False, verbose=False)
+
+            self.obslist = []
+            for bw in self.bw_hz:
+                template.rf = bw
+                obs = self.template.observe(self.ehtarray, self.tint_sec, self.tadv_sec, self.tstart_hr, self.tstop_hr, bw,
+                                            mjd = self.mjd, timetype='UTC', ttype='DFT', noise=False, verbose=False)
+                self.obslist.append(obs)
 
             uvlist = []
             antenna_list = []
-            for tdata in self.obs.tlist():
-                num_antenna = len(np.unique(tdata['t1'])) + 1
-                if num_antenna < 3:
-                    continue
-                antenna_list.append(num_antenna)
-                u = tdata['u']
-                v = tdata['v']
-                uvlist.append(np.stack((u,v), axis=-1))
+            for obs in self.obslist:
+                for tdata in obs.tlist():
+                    num_antenna = len(np.unique(tdata['t1'])) + 1
+                    if num_antenna < 3:
+                        continue
+                    antenna_list.append(num_antenna)
+                    u = tdata['u']
+                    v = tdata['v']
+                    uvlist.append(np.stack((u,v), axis=-1))
 
             self.uvlist = uvlist
             self.antenna_list = antenna_list

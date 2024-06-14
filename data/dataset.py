@@ -10,7 +10,7 @@ warnings.filterwarnings("ignore")
 class ImgDataset(Dataset):
     def __init__(self, filelist, transform=None,
                  ehtim=False, ehtarray='./data/EHT2017.txt', subarray=None,
-                 date='2017-04-05', ra=187.7059167, dec=12.3911222, bw_hz=230e9,
+                 date='2017-04-05', ra=187.7059167, dec=12.3911222, bw_hz=[230e9],
                  tint_sec=10, tadv_sec=48*60, tstart_hr=4.75, tstop_hr=6.5,
                  noise=False, sgrscat=False, ampcal=True, phasecal=True):
         self.filelist = filelist
