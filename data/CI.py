@@ -43,8 +43,8 @@ class Closure_Invariants():
 
             self.obslist = []
             for bw in self.bw_hz:
-                template.rf = bw
-                obs = self.template.observe(self.ehtarray, self.tint_sec, self.tadv_sec, self.tstart_hr, self.tstop_hr, bw,
+                template.rf = bw # actually the radio frequency
+                obs = self.template.observe(self.ehtarray, self.tint_sec, self.tadv_sec, self.tstart_hr, self.tstop_hr, 8e9, # 8 GHz band
                                             mjd = self.mjd, timetype='UTC', ttype='DFT', noise=False, verbose=False)
                 self.obslist.append(obs)
 
