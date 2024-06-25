@@ -20,7 +20,7 @@ class ImgDataset(Dataset):
                                              ehtim=ehtim, ehtarray=ehtarray, subarray=subarray,
                                              date=date, ra=ra, dec=dec, bw_hz=bw_hz,
                                              tint_sec=tint_sec, tadv_sec=tadv_sec, tstart_hr=tstart_hr, tstop_hr=tstop_hr,
-                                             noise=noise, sgrscat=sgrscat, ampcal=ampcal, phasecal=phasecal)
+                                             sgrscat=sgrscat, ampcal=ampcal, phasecal=phasecal)
         
         # self.imgs = np.concatenate(self.imgs)
 
