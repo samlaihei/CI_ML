@@ -1,10 +1,13 @@
 import numpy as np
 import ehtim as eh
 from astropy.time import Time
+import torch
 
 # Ignore warnings
 import warnings
 warnings.filterwarnings("ignore")
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class Closure_Invariants():
 
@@ -69,13 +72,15 @@ class Closure_Invariants():
             self.atriads, self.btriads = self.Triads(self.antenna)
 
     def FTCI(self, imgs):
+        imgs = torch.tensor(imgs).to(device)
         if self.ehtim:
             ci = np.array([np.array([]) for i in range(len(imgs))])
             for uv, num_antenna in zip(self.uvlist, self.antenna_list):
-                vis = self.Visibilities(np.array(imgs), uv)
+                vis = self.Visibilities(imgs, torch.tensor(uv, dtype=torch.float32).to(device))
                 temp_ci = self.ClosureInvariants(vis, num_antenna)
-                temp_ci = temp_ci.reshape(imgs.shape[0], -1)
+                temp_ci = temp_ci.reshape(imgs.shape[0], -1).cpu().detach().numpy()
                 ci = np.concatenate((ci, temp_ci), axis=1)
+            ci = torch.tensor(ci)
 
         else:
             vis = self.Visibilities(imgs)
@@ -83,23 +88,23 @@ class Closure_Invariants():
         return ci
     
 
-    def Visibilities(self, imgs:np.ndarray, uv=None):
+    def Visibilities(self, imgs, uv=None):
         """
         Samples the visibility plane DFT according to eht uv co-ordinates.
 
         Args:
-            imgs (np.ndarray): array of images
+            imgs (torch.Tensor): tensor of images
 
         Returns:
-            vis (np.ndarray): visibilities taken for each image
+            vis (torch.Tensor): visibilities taken for each image
         """
         if not self.ehtim:
-            uv = np.concatenate([self.uvf[x] for x in self.uvf])
+            uv = torch.cat([self.uvf[x] for x in self.uvf])
         vis = self.DFT(imgs, uv)
         return vis.reshape((len(imgs), len(self.uvf), -1))
 
 
-    def ClosureInvariants(self, vis:np.ndarray, n:int=7):
+    def ClosureInvariants(self, vis, n:int=7):
         """
         Calculates copolar closure invariants for visibilities assuming an n element 
         interferometer array using method 1.
@@ -109,20 +114,21 @@ class Closure_Invariants():
         https://doi.org/10.1103/PhysRevD.105.043019 
 
         Args:
-            vis (np.ndarray): visibility data sampled by the interferometer array
+            vis (torch.Tensor): visibility data sampled by the interferometer array
             n (int): number of antenna as part of the interferometer array
 
         Returns:
-            ci (np.ndarray): closure invariants
+            ci (torch.Tensor): closure invariants
         """
         if self.ehtim:
             self.atriads, self.btriads = self.Triads(n)
         C_oa = vis[:, :, self.btriads[:, 0]]
         C_ab = vis[:, :, self.btriads[:, 1]]
-        C_bo = np.conjugate(vis[:, :, self.btriads[:, 2]])
-        A_oab = C_oa / np.conjugate(C_ab) * C_bo
-        A_oab = np.dstack((A_oab.real, A_oab.imag))
-        A_max = np.nanmax(np.abs(A_oab), axis=-1, keepdims=True)
+        C_bo = torch.conj(vis[:, :, self.btriads[:, 2]])
+        A_oab = C_oa / torch.conj(C_ab) * C_bo
+        # A_oab = torch.stack((A_oab.real, A_oab.imag), dim=-1)
+        A_oab = torch.dstack((A_oab.real, A_oab.imag))
+        A_max = nanmax(torch.abs(A_oab), dim=-1, keepdim=True)[0]
         ci = A_oab / A_max
         return ci
 
@@ -137,16 +143,16 @@ class Closure_Invariants():
         ny, nx = data.shape[-2:]
         dx = xfov*4.84813681109536e-12 / nx
         dy = yfov*4.84813681109536e-12 / ny
-        angx = (np.arange(nx) - nx//2) * dx
-        angy = (np.arange(ny) - ny//2) * dy
-        lvect = np.sin(angx)
-        mvect = np.sin(angy)
-        l, m = np.meshgrid(lvect, mvect)
-        lm = np.concatenate([l.reshape(1,-1), m.reshape(1,-1)], axis=0)
-        imgvect = data.reshape((data.shape[0],-1))
-        x = -2*np.pi*np.dot(uv,lm)[None, ...]
-        visr = np.sum(imgvect[:, None, :] * np.cos(x, dtype=np.float32), axis=-1)
-        visi = np.sum(imgvect[:, None, :] * np.sin(x, dtype=np.float32), axis=-1)
+        angx = (torch.arange(nx) - nx//2) * dx
+        angy = (torch.arange(ny) - ny//2) * dy
+        lvect = torch.sin(angx)
+        mvect = torch.sin(angy)
+        l, m = torch.meshgrid(lvect, mvect)
+        lm = torch.cat([l.reshape(1,-1), m.reshape(1,-1)], dim=0).to(device)
+        imgvect = data.reshape((data.shape[0],-1)).to(device)
+        x = -2*np.pi*torch.matmul(uv,lm)[None, ...].to(device)
+        visr = torch.sum(imgvect[:, None, :] * torch.cos(x).to(device), axis=-1)
+        visi = torch.sum(imgvect[:, None, :] * torch.sin(x).to(device), axis=-1)
         if data.ndim == 2:
             vis = visr.ravel() + 1j*visi.ravel()
         else:
@@ -172,30 +178,34 @@ class Closure_Invariants():
             n (int): number of antenna in the array
 
         Returns:
-            atriads (np.ndarray): antenna triangular loop indicies
-            btriads (np.ndarray): baseline triangular loop indicies
+            atriads (torch.Tensor): antenna triangular loop indicies
+            btriads (torch.Tensor): baseline triangular loop indicies
         """
         ntriads = (n-1)*(n-2)//2
-        ant1 = np.zeros(ntriads, dtype=np.uint8)
-        ant2 = np.arange(1, n, dtype=np.uint8).reshape(n-1, 1) + np.zeros(n-2, dtype=np.uint8).reshape(1, n-2)
-        ant3 = np.arange(2, n, dtype=np.uint8).reshape(1, n-2) + np.zeros(n-1, dtype=np.uint8).reshape(n-1, 1)
-        anti = np.where(ant3 > ant2)
+        ant1 = torch.zeros(ntriads, dtype=torch.uint8)
+        ant2 = torch.arange(1, n, dtype=torch.uint8).reshape(n-1, 1) + torch.zeros(n-2, dtype=torch.uint8).reshape(1, n-2)
+        ant3 = torch.arange(2, n, dtype=torch.uint8).reshape(1, n-2) + torch.zeros(n-1, dtype=torch.uint8).reshape(n-1, 1)
+        anti = torch.where(ant3 > ant2)
         ant2, ant3 = ant2[anti], ant3[anti]
-        atriads = np.concatenate([ant1.reshape(-1, 1), ant2.reshape(-1, 1), ant3.reshape(-1, 1)], axis=-1)
+        atriads = torch.cat([ant1.reshape(-1, 1), ant2.reshape(-1, 1), ant3.reshape(-1, 1)], dim=-1)
         
         ant_pairs_01 = list(zip(ant1, ant2))
         ant_pairs_12 = list(zip(ant2, ant3))
         ant_pairs_20 = list(zip(ant3, ant1))
         
-        t1 = np.arange(n, dtype=int).reshape(n, 1) + np.zeros(n, dtype=int).reshape(1, n)
-        t2 = np.arange(n, dtype=int).reshape(1, n) + np.zeros(n, dtype=int).reshape(n, 1)
-        bli = np.where(t2 > t1)
+        t1 = torch.arange(n, dtype=int).reshape(n, 1) + torch.zeros(n, dtype=int).reshape(1, n)
+        t2 = torch.arange(n, dtype=int).reshape(1, n) + torch.zeros(n, dtype=int).reshape(n, 1)
+        bli = torch.where(t2 > t1)
         t1, t2 = t1[bli], t2[bli]
         bl_pairs = list(zip(t1, t2))
 
-        bl_01 = np.asarray([bl_pairs.index(apair) for apair in ant_pairs_01])
-        bl_12 = np.asarray([bl_pairs.index(apair) for apair in ant_pairs_12])
-        bl_20 = np.asarray([bl_pairs.index(tuple(reversed(apair))) for apair in ant_pairs_20])
-        btriads = np.concatenate([bl_01.reshape(-1, 1), bl_12.reshape(-1, 1), bl_20.reshape(-1, 1)], axis=-1)
+        bl_01 = torch.tensor([bl_pairs.index(apair) for apair in ant_pairs_01])
+        bl_12 = torch.tensor([bl_pairs.index(apair) for apair in ant_pairs_12])
+        bl_20 = torch.tensor([bl_pairs.index(tuple(reversed(apair))) for apair in ant_pairs_20])
+        btriads = torch.cat([bl_01.reshape(-1, 1), bl_12.reshape(-1, 1), bl_20.reshape(-1, 1)], dim=-1)
         return atriads, btriads
 
+def nanmax(tensor, dim=None, keepdim=False):
+    min_value = torch.finfo(tensor.dtype).min
+    output = tensor.nan_to_num(min_value).max(dim=dim, keepdim=keepdim)
+    return output
