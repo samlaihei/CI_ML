@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from VQVAE.encoder import Encoder
 from VQVAE.decoder import Decoder
 from vit_pytorch.vit_for_small_dataset import ViT
+from vit_pytorch.recorder import Recorder
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -62,6 +63,16 @@ class Vae_FD(nn.Module):
         features_ci = features_ci.reshape(-1, self.latent_size, self.imgdim1//4, self.imgdim2//4)
 
         return features_ci
+
+    def ci_attn(self, ci):
+        ci = ci.reshape(-1, self.ci_dim)
+        ci = ci.repeat(1, 3)
+        ci = ci.reshape(-1, 3, self.ci_dim)
+        ci = ci.reshape(-1, 3, 31, 32)
+        wrapper = Recorder(self.ci_xtrans)
+        features_ci, attns = wrapper(ci)
+        features_ci = features_ci.reshape(-1, self.latent_size, self.imgdim1//4, self.imgdim2//4)
+        return features_ci, attns
     
     def forward(self, imgs, ci): 
         features_vae, features_q, recon_img = self.encoder_to_img(imgs)

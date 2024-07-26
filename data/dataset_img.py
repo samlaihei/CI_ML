@@ -8,13 +8,17 @@ import warnings
 warnings.filterwarnings("ignore")
 
 class ImgDataset(Dataset):
-    def __init__(self, filelist, transform=None,
+    def __init__(self, filelist, transform=None, transform_list=None,
                  ehtim=False, ehtarray='./data/EHT2017.txt', subarray=None,
                  date='2017-04-05', ra=187.7059167, dec=12.3911222, bw_hz=[230e9],
                  tint_sec=10, tadv_sec=48*60, tstart_hr=4.75, tstop_hr=6.5,
                  noise=False, sgrscat=False, ampcal=True, phasecal=True):
         self.filelist = filelist
         self.transform = transform
+        if transform_list is None:
+            self.transform_list = [transform] * len(self.filelist)
+        else:
+            self.transform_list = transform_list
         self.imgs = [np.load(f) for f in self.filelist]
         self.closure = CI.Closure_Invariants(filename='./data/ehtuv.npz',
                                              ehtim=ehtim, ehtarray=ehtarray, subarray=subarray,
@@ -49,10 +53,12 @@ class ImgDataset(Dataset):
             idx = idx.tolist()
 
         image = self.imgs[idx]
-        if self.transform:
-            image = self.transform(image)
-
         class_label = self.class_labels[idx]
+
+        if self.transform or self.transform_list is not None:
+            transform = self.transform_list[np.where(class_label == 1)[0][0]]
+            image = transform(image)
+
         # ci = self.closure.FTCI(np.array([image])).reshape(-1)
         ci = np.array([0])
 
