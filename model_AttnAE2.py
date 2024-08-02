@@ -40,6 +40,7 @@ class Vae_FD(nn.Module):
             emb_dropout = 0.1
         )
 
+
         # self.attn = SelfAttentionLayer()
 
         # linear classifier
@@ -69,8 +70,9 @@ class Vae_FD(nn.Module):
         ci = ci.repeat(1, 3)
         ci = ci.reshape(-1, 3, self.ci_dim)
         ci = ci.reshape(-1, 3, 31, 32)
-        wrapper = Recorder(self.ci_xtrans)
-        features_ci, attns = wrapper(ci)
+        self.ci_xtrans = Recorder(self.ci_xtrans)
+        features_ci, attns = self.ci_xtrans(ci)
+        self.ci_xtrans = self.ci_xtrans.eject()
         features_ci = features_ci.reshape(-1, self.latent_size, self.imgdim1//4, self.imgdim2//4)
         return features_ci, attns
     
@@ -88,6 +90,11 @@ class Vae_FD(nn.Module):
         features_pred = self.ci_latent(ci.reshape(-1, self.ci_dim, 1, 1))
         pred_img = self.decoder(features_pred)
         return features_pred, pred_img
+    
+    def predict_with_attn(self, ci):
+        features_pred, attns = self.ci_attn(ci.reshape(-1, self.ci_dim, 1, 1))
+        pred_img = self.decoder(features_pred)
+        return features_pred, pred_img, attns
     
     def predict_class(self, ci):
         features_cls = self.ci_latent(ci.reshape(-1, self.ci_dim, 1, 1))
